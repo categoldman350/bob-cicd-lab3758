@@ -94,43 +94,54 @@ spec:
         }
 
         // ── Lab 1: PR / Git Diff Review ──────────────────────────
-        stage('PR Review') {
+        
+        // ── Lab 2: Unit Testing ──────────────────────────────────
+        stage('Unit Tests') {
             options {
-                timeout(time: 5, unit: 'MINUTES')
+                timeout(time: 10, unit: 'MINUTES')
             }
             steps {
                 script {
-                    catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
-                        sh '''
-                            git config --global --add safe.directory "$WORKSPACE"
-                            git diff origin/main...HEAD > git-diff.txt || : > git-diff.txt
-                        '''
+                    def testsFailed = false
 
-                        def analysis = askBob(
-                            "Read git-diff.txt and produce the senior-developer PR overview.",
-                            'pipeline-git-diff-overview'
-                        )
+                    // Run tests in build-tools (default container); never abort the pipeline
+                    catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+                        dir('order-service') {
+                            def rc = sh(script: 'mvn test', returnStatus: true)
+                            if (rc != 0) {
+                                testsFailed = true
+                                error("mvn test exited with status ${rc}")
+                            }
+                        }
+                    }
 
-                        echo '════════════════════════════════════════════════════════'
-                        echo '  Bob — PR Review'
-                        echo '════════════════════════════════════════════════════════'
-                        echo analysis
-                        echo '════════════════════════════════════════════════════════'
+                    junit testResults: 'order-service/target/surefire-reports/*.xml',
+                          allowEmptyResults: true
 
-                        writeFile file: 'bob-pr-review.md', text: analysis
+                    if (testsFailed) {
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                            echo '════════════════════════════════════════════════════════'
+                            echo '  Bob — Unit Test Failure Analysis'
+                            echo '════════════════════════════════════════════════════════'
+
+                            def analysis = askBob(
+                                """Analyze the test failures in the surefire reports under order-service/target/surefire-reports/ alongside the relevant source files under order-service/src/. Identify root causes and suggest fixes.""",
+                                'pipeline-test-failure-analyzer'
+                            )
+
+                            echo analysis
+                            echo '════════════════════════════════════════════════════════'
+                            writeFile file: 'bob-test-analysis.md', text: analysis
+                        }
                     }
                 }
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'bob-pr-review.md', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'bob-test-analysis.md', allowEmptyArchive: true
                 }
             }
         }
-
-        // ── Lab 2: Unit Testing ──────────────────────────────────
-        //    Add a mvn test stage + Bob test-failure analysis.
-        //    See labs/lab2/UNIT_TESTING.md.
 
         // ── Lab 3: Security Scanning ─────────────────────────────
         //    Add a scanner stage + Bob CVE/vuln analysis.
