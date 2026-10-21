@@ -45,7 +45,7 @@ class OrderServiceTest {
     void getAllOrders_returnsAllOrders() {
         when(orderRepository.findAll()).thenReturn(Arrays.asList(testOrder));
         List<Order> orders = orderService.getAllOrders();
-        assertThat(orders).hasSize(2);
+        assertThat(orders).hasSize(1);
         assertThat(orders.get(0).getCustomerName()).isEqualTo("John Doe");
     }
 
